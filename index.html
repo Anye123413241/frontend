@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rompecabezas - Jugar juntos</title>
+    <title>Rompecabezas 3M</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="config.js"></script>
     <style>
@@ -110,7 +110,7 @@
         
         .piece-thumb { cursor: grab; border-radius: 2px; border: 2px solid transparent; transition: transform 0.15s, border-color 0.15s, opacity 0.2s; }
         .piece-thumb:hover { border-color: #e91e63; transform: scale(1.05); }
-        .piece-thumb.dragging { opacity: 0.4; cursor: grabbing; }
+        .piece-thumb.dragging { opacity: 0; pointer-events: none; cursor: grabbing; }
         
         .workspace-panel { display: flex; flex-direction: column; min-width: 0; overflow: auto; align-items: center; justify-content: flex-start; }
         #workspaceCanvas { display: block; background: rgba(255, 245, 250, 0.95); border-radius: 8px; cursor: crosshair; border: 1px solid rgba(233, 30, 99, 0.2); }
@@ -140,8 +140,8 @@
     </div>
     
     <div class="lobby" id="lobby">
-        <h1>Rompecabezas juntos</h1>
-        <p style="margin-bottom: 2rem; color: #888;">Juega en tiempo real con alguien especial</p>
+        <h1>Rompecabezas 3M</h1>
+        <p style="margin-bottom: 2rem; color: #888;">¡Felices 3M, amor!</p>
         
         <div class="lobby-btns">
             <div class="room-box">
