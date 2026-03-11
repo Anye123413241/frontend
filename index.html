@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rompecabezas - Jugar juntos</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="config.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Outfit:wght@300;500;600&display=swap');
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body { font-family: 'Outfit', sans-serif; background: #fff; min-height: 100vh; color: #8b4a5c; }
+        
+        .lobby {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .lobby h1 {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 2.5rem;
+            background: linear-gradient(90deg, #c45c7a, #e91e63);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 2rem;
+        }
+        
+        .lobby-btns { display: flex; gap: 1.5rem; flex-wrap: wrap; justify-content: center; }
+        
+        .room-box {
+            background: rgba(255, 240, 245, 0.9);
+            padding: 2rem;
+            border-radius: 16px;
+            border: 1px solid rgba(233, 30, 99, 0.25);
+            margin-bottom: 1.5rem;
+        }
+        
+        .room-code {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #e91e63;
+            letter-spacing: 0.3em;
+            margin: 1rem 0;
+        }
+        
+        .room-code.hint { font-size: 0.9rem; color: #888; letter-spacing: normal; }
+        
+        .input-room {
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            border: 2px solid #e91e63;
+            border-radius: 8px;
+            width: 160px;
+            text-align: center;
+            text-transform: uppercase;
+        }
+        
+        .btn { padding: 0.7rem 1.5rem; border: 2px solid #e91e63; background: transparent; color: #c2185b; font-family: inherit; font-size: 1rem; border-radius: 8px; cursor: pointer; transition: all 0.3s; }
+        .btn:hover { background: rgba(233, 30, 99, 0.15); }
+        .btn-primary { background: linear-gradient(135deg, #e91e63, #c2185b); border-color: #e91e63; color: #fff; }
+        .btn-primary:hover { background: linear-gradient(135deg, #ec407a, #d81b60); }
+        
+        .game-container { display: none; }
+        .game-container.show { display: block; }
+        
+        .multiplayer-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            background: rgba(255, 240, 245, 0.9);
+            border-bottom: 1px solid rgba(233, 30, 99, 0.2);
+        }
+        
+        .multiplayer-bar .room-info { font-size: 0.9rem; color: #c2185b; }
+        
+        .header { text-align: center; padding: 1rem 2rem; }
+        .header h1 { font-family: 'Cormorant Garamond', serif; font-size: 2rem; background: linear-gradient(90deg, #c45c7a, #e91e63); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        
+        .main-grid { display: grid; grid-template-columns: 1fr 220px; gap: 1rem; padding: 0.5rem 1rem 1rem; height: calc(100vh - 180px); min-height: 500px; }
+        
+        .panel { background: rgba(255, 240, 245, 0.9); border-radius: 16px; padding: 1rem; border: 1px solid rgba(233, 30, 99, 0.25); overflow: hidden; display: flex; flex-direction: column; }
+        .panel h3 { font-size: 0.95rem; margin-bottom: 0.75rem; color: #c2185b; font-weight: 600; }
+        
+        .img-popup { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.75); z-index: 3000; justify-content: center; align-items: center; padding: 2rem; }
+        .img-popup.show { display: flex; }
+        .img-popup-content { position: relative; max-width: 95vw; max-height: 95vh; }
+        .img-popup-content img { max-width: 100%; max-height: 90vh; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+        .img-popup-close { position: absolute; top: -40px; right: 0; background: #e91e63; color: #fff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 1.5rem; cursor: pointer; }
+        .img-popup-close:hover { background: #c2185b; }
+        
+        .right-panel { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+        .reference-panel { flex-shrink: 0; }
+        .reference-panel .reference-img { width: 100%; max-width: 200px; height: auto; max-height: 120px; object-fit: cover; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); cursor: pointer; }
+        .reference-panel .reference-img:hover { opacity: 0.9; }
+        
+        .pieces-panel { flex: 1; overflow: auto; min-height: 0; }
+        .pieces-panel::-webkit-scrollbar { width: 8px; height: 8px; }
+        .pieces-panel::-webkit-scrollbar-track { background: rgba(233, 30, 99, 0.1); border-radius: 4px; }
+        .pieces-panel::-webkit-scrollbar-thumb { background: #e91e63; border-radius: 4px; }
+        
+        .pieces-grid { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-start; align-content: flex-start; padding-right: 4px; padding-bottom: 4px; max-height: calc(7 * 40px + 6 * 4px); }
+        
+        .piece-thumb { cursor: grab; border-radius: 2px; border: 2px solid transparent; transition: transform 0.15s, border-color 0.15s; }
+        .piece-thumb:hover { border-color: #e91e63; transform: scale(1.05); }
+        
+        .workspace-panel { display: flex; flex-direction: column; min-width: 0; overflow: auto; align-items: center; justify-content: flex-start; }
+        #workspaceCanvas { display: block; background: rgba(255, 245, 250, 0.95); border-radius: 8px; cursor: crosshair; border: 1px solid rgba(233, 30, 99, 0.2); }
+        
+        .controls { display: flex; justify-content: center; gap: 1rem; padding: 0.75rem; flex-wrap: wrap; }
+        .progress { text-align: center; padding: 0.5rem; font-size: 1rem; }
+        .progress span { color: #e91e63; font-weight: 600; }
+        
+        .loading { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.98); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; color: #c2185b; }
+        .loading.hidden { opacity: 0; pointer-events: none; transition: opacity 0.5s; }
+        .spinner { width: 50px; height: 50px; border: 4px solid rgba(233, 30, 99, 0.2); border-top-color: #e91e63; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .victory { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: linear-gradient(135deg, #fff5f8, #ffe8f0); padding: 2.5rem; border-radius: 20px; text-align: center; z-index: 2000; border: 2px solid #e91e63; display: none; color: #8b4a5c; }
+        .victory.show { display: block; }
+        .victory h2 { color: #c2185b; margin-bottom: 1rem; }
+        
+        .drag-ghost { position: fixed; pointer-events: none; z-index: 9999; opacity: 0.9; border: 2px solid #e91e63; border-radius: 4px; box-shadow: 0 8px 32px rgba(233, 30, 99, 0.3); }
+        
+        .error-msg { color: #c62828; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <p>Cargando...</p>
+    </div>
+    
+    <div class="lobby" id="lobby">
+        <h1>Rompecabezas juntos</h1>
+        <p style="margin-bottom: 2rem; color: #888;">Juega en tiempo real con alguien especial</p>
+        
+        <div class="lobby-btns">
+            <div class="room-box">
+                <p>Crear una sala</p>
+                <button class="btn btn-primary" onclick="createRoom()">Crear sala</button>
+                <div id="createdRoom" style="display: none;">
+                    <p class="room-code hint">Comparte este código:</p>
+                    <p class="room-code" id="roomCodeDisplay"></p>
+                    <p class="room-code hint">Esperando que se una...</p>
+                </div>
+            </div>
+            <div class="room-box">
+                <p>Unirse a una sala</p>
+                <input type="text" class="input-room" id="roomCodeInput" placeholder="Código" maxlength="6">
+                <br><br>
+                <button class="btn btn-primary" onclick="joinRoom()">Unirse</button>
+            </div>
+        </div>
+        <p class="error-msg" id="lobbyError"></p>
+    </div>
+    
+    <div class="game-container" id="gameContainer">
+        <div class="multiplayer-bar">
+            <span class="room-info">Sala: <strong id="currentRoomDisplay"></strong></span>
+            <button class="btn" onclick="leaveRoom()">Salir</button>
+        </div>
+        <div class="header"><h1>Rompecabezas</h1></div>
+        <div class="controls">
+            <button class="btn btn-primary" onclick="startPuzzle()">Mezclar piezas</button>
+            <span class="progress">Piezas: <span id="progressCount">0</span> / 100</span>
+        </div>
+        <div class="main-grid">
+            <div class="panel workspace-panel">
+                <h3 style="align-self: flex-start;">Lienzo</h3>
+                <canvas id="workspaceCanvas"></canvas>
+            </div>
+            <div class="right-panel">
+                <div class="panel reference-panel">
+                    <h3>Referencia</h3>
+                    <img id="refImage" class="reference-img" src="Agregar un subtítulo.jpg" alt="Referencia" onclick="showImagePopup()" title="Clic para ver más grande">
+                </div>
+                <div class="panel pieces-panel">
+                    <h3>Piezas</h3>
+                    <div class="pieces-grid" id="piecesGrid"></div>
+                </div>
+            </div>
+        </div>
+        <div class="img-popup" id="imgPopup" onclick="if(event.target===this) hideImagePopup()">
+            <div class="img-popup-content">
+                <button class="img-popup-close" onclick="hideImagePopup()">&times;</button>
+                <img src="Agregar un subtítulo.jpg" alt="Referencia">
+            </div>
+        </div>
+        <div class="victory" id="victory">
+            <h2>¡Felicitaciones!</h2>
+            <p>Han completado el rompecabezas juntos.</p>
+            <button class="btn btn-primary" onclick="startPuzzle()">Jugar de nuevo</button>
+        </div>
+    </div>
+
+    <script>
+        const COLS = 10, ROWS = 10, TOTAL_PIECES = 100;
+        const THUMB_SIZE = 40;
+        let img = new Image();
+        let pieces = [];
+        let workspaceCanvas, workspaceCtx;
+        let pieceWidth, pieceHeight;
+        let scaledPieceW, scaledPieceH;
+        let workspaceWidth, workspaceHeight;
+        let selectedPiece = null;
+        let placedPieces = 0;
+        let dragGhost = null;
+        let socket = null;
+        let currentRoomId = null;
+        let isCreator = false;
+        
+        img.src = 'Agregar un subtítulo.jpg';
+        img.onerror = () => document.getElementById('loading').querySelector('p').textContent = 'Error al cargar la imagen.';
+        
+        function createRoom() {
+            document.getElementById('lobbyError').textContent = '';
+            try {
+                socket = io(window.SOCKET_URL);
+                socket.on('connect', () => {
+                    socket.emit('create-room', (res) => {
+                        currentRoomId = res.roomId;
+                        isCreator = true;
+                        document.getElementById('roomCodeDisplay').textContent = currentRoomId;
+                        document.getElementById('createdRoom').style.display = 'block';
+                        if (img.complete) startGame([], null);
+                        else img.onload = () => startGame([], null);
+                    });
+                });
+                socket.on('connect_error', () => {
+                    document.getElementById('lobbyError').textContent = 'No se pudo conectar al servidor. ¿Está desplegado el backend?';
+                });
+            } catch (e) {
+                document.getElementById('lobbyError').textContent = 'Error de conexión. Verifica config.js con la URL del backend.';
+            }
+        }
+        
+        function joinRoom() {
+            const code = document.getElementById('roomCodeInput').value.trim().toUpperCase();
+            if (!code) { document.getElementById('lobbyError').textContent = 'Escribe el código'; return; }
+            document.getElementById('lobbyError').textContent = '';
+            try {
+                socket = io(window.SOCKET_URL);
+                socket.on('connect', () => {
+                    socket.emit('join-room', code, (res) => {
+                        if (res.error) {
+                            document.getElementById('lobbyError').textContent = res.error;
+                            return;
+                        }
+                        currentRoomId = code;
+                        isCreator = false;
+                        document.getElementById('loading').querySelector('p').textContent = 'Entrando a la sala...';
+                        if (img.complete) startGame(res.placedPieces || [], res.shuffleOrder);
+                        else img.onload = () => startGame(res.placedPieces || [], res.shuffleOrder);
+                    });
+                });
+                socket.on('connect_error', () => {
+                    document.getElementById('lobbyError').textContent = 'No se pudo conectar. Verifica la URL del backend.';
+                });
+            } catch (e) {
+                document.getElementById('lobbyError').textContent = 'Error. Verifica config.js';
+            }
+        }
+        
+        function startGame(syncedPlaced = [], shuffleOrder = null) {
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('gameContainer').classList.add('show');
+            document.getElementById('currentRoomDisplay').textContent = currentRoomId;
+            document.getElementById('loading').classList.add('hidden');
+            
+            initPuzzle();
+            if (shuffleOrder) applyShuffleOrder(shuffleOrder);
+            syncedPlaced.forEach(key => {
+                const [r, c] = key.split(',').map(Number);
+                const p = pieces.find(x => x.row === r && x.col === c);
+                if (p) { p.placed = true; if (p.element) p.element.style.display = 'none'; placedPieces++; }
+            });
+            document.getElementById('progressCount').textContent = placedPieces;
+            render();
+            
+            socket.on('piece-update', ({ row, col, placed }) => {
+                const p = pieces.find(x => x.row === row && x.col === col);
+                if (!p) return;
+                p.placed = placed;
+                if (p.element) p.element.style.display = placed ? 'none' : 'block';
+                placedPieces = pieces.filter(x => x.placed).length;
+                document.getElementById('progressCount').textContent = placedPieces;
+                render();
+                if (placedPieces === TOTAL_PIECES) document.getElementById('victory').classList.add('show');
+            });
+            
+            socket.on('shuffle-sync', (order) => {
+                if (!isCreator) applyShuffleOrder(order);
+            });
+        }
+        
+        function applyShuffleOrder(order) {
+            if (!order || !order.length) return;
+            const orderMap = {};
+            order.forEach((key, i) => { orderMap[key] = i; });
+            const byKey = p => `${p.row},${p.col}`;
+            pieces.sort((a, b) => (orderMap[byKey(a)] ?? 999) - (orderMap[byKey(b)] ?? 999));
+            updatePiecesDOM();
+        }
+        
+        function leaveRoom() {
+            if (socket) socket.disconnect();
+            currentRoomId = null;
+            document.getElementById('gameContainer').classList.remove('show');
+            document.getElementById('lobby').style.display = 'flex';
+            document.getElementById('createdRoom').style.display = 'none';
+            document.getElementById('roomCodeInput').value = '';
+        }
+        
+        function initPuzzle() {
+            pieceWidth = Math.floor(img.width / COLS);
+            pieceHeight = Math.floor(img.height / ROWS);
+            workspaceWidth = Math.min(1100, img.width);
+            workspaceHeight = (img.height / img.width) * workspaceWidth;
+            scaledPieceW = workspaceWidth / COLS;
+            scaledPieceH = workspaceHeight / ROWS;
+            
+            workspaceCanvas = document.getElementById('workspaceCanvas');
+            workspaceCanvas.width = workspaceWidth;
+            workspaceCanvas.height = workspaceHeight;
+            workspaceCanvas.style.width = workspaceWidth + 'px';
+            workspaceCanvas.style.height = workspaceHeight + 'px';
+            workspaceCtx = workspaceCanvas.getContext('2d');
+            
+            createPieces();
+            workspaceCanvas.addEventListener('mousedown', onWorkspaceMouseDown);
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        }
+        
+        function createPieces() {
+            pieces = [];
+            const container = document.getElementById('piecesGrid');
+            container.innerHTML = '';
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    const sx = col * pieceWidth, sy = row * pieceHeight;
+                    const thumbCanvas = document.createElement('canvas');
+                    thumbCanvas.width = THUMB_SIZE;
+                    thumbCanvas.height = THUMB_SIZE;
+                    thumbCanvas.getContext('2d').drawImage(img, sx, sy, pieceWidth, pieceHeight, 0, 0, THUMB_SIZE, THUMB_SIZE);
+                    const fullCanvas = document.createElement('canvas');
+                    fullCanvas.width = scaledPieceW;
+                    fullCanvas.height = scaledPieceH;
+                    fullCanvas.getContext('2d').drawImage(img, sx, sy, pieceWidth, pieceHeight, 0, 0, scaledPieceW, scaledPieceH);
+                    const div = document.createElement('div');
+                    div.className = 'piece-thumb';
+                    div.appendChild(thumbCanvas);
+                    div.style.width = THUMB_SIZE + 'px';
+                    div.style.height = THUMB_SIZE + 'px';
+                    const p = { row, col, thumbCanvas, fullCanvas, targetX: col * scaledPieceW, targetY: row * scaledPieceH, placed: false, element: div };
+                    pieces.push(p);
+                    div.addEventListener('mousedown', (e) => onPieceMouseDown(e, pieces.indexOf(p)));
+                    container.appendChild(div);
+                }
+            }
+            shufflePieces();
+        }
+        
+        function shufflePieces() {
+            for (let i = pieces.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pieces[i], pieces[j]] = [pieces[j], pieces[i]];
+            }
+            const shuffleOrder = pieces.map(p => `${p.row},${p.col}`);
+            if (socket && currentRoomId && isCreator) socket.emit('set-shuffle', { roomId: currentRoomId, shuffleOrder });
+            updatePiecesDOM();
+            placedPieces = 0;
+            document.getElementById('progressCount').textContent = '0';
+            render();
+        }
+        
+        function updatePiecesDOM() {
+            const grid = document.getElementById('piecesGrid');
+            pieces.forEach((p, i) => {
+                if (p.placed) p.element.style.display = 'none';
+                else {
+                    p.element.style.display = 'block';
+                    p.element.onmousedown = (e) => onPieceMouseDown(e, i);
+                    grid.appendChild(p.element);
+                }
+            });
+        }
+        
+        function showImagePopup() { document.getElementById('imgPopup').classList.add('show'); }
+        function hideImagePopup() { document.getElementById('imgPopup').classList.remove('show'); }
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') hideImagePopup(); });
+        
+        function startPuzzle() {
+            pieces.forEach(p => p.placed = false);
+            shufflePieces();
+            document.getElementById('victory').classList.remove('show');
+        }
+        
+        function onPieceMouseDown(e, index) {
+            e.preventDefault();
+            const p = pieces[index];
+            if (p.placed) return;
+            selectedPiece = p;
+            dragGhost = document.createElement('canvas');
+            dragGhost.width = scaledPieceW;
+            dragGhost.height = scaledPieceH;
+            dragGhost.getContext('2d').drawImage(p.fullCanvas, 0, 0);
+            dragGhost.className = 'drag-ghost';
+            dragGhost.style.cssText = `position:fixed;width:${scaledPieceW}px;height:${scaledPieceH}px;left:${e.clientX - scaledPieceW/2}px;top:${e.clientY - scaledPieceH/2}px;pointer-events:none;z-index:9999;`;
+            document.body.appendChild(dragGhost);
+        }
+        
+        function onWorkspaceMouseDown(e) {
+            if (selectedPiece && dragGhost) return;
+            const rect = workspaceCanvas.getBoundingClientRect();
+            const scaleX = workspaceWidth / rect.width, scaleY = workspaceHeight / rect.height;
+            const x = (e.clientX - rect.left) * scaleX, y = (e.clientY - rect.top) * scaleY;
+            for (let i = pieces.length - 1; i >= 0; i--) {
+                const p = pieces[i];
+                if (!p.placed) continue;
+                if (x >= p.targetX && x <= p.targetX + scaledPieceW && y >= p.targetY && y <= p.targetY + scaledPieceH) {
+                    p.placed = false;
+                    placedPieces--;
+                    if (p.element) p.element.style.display = 'block';
+                    if (socket && currentRoomId) socket.emit('piece-removed', { roomId: currentRoomId, row: p.row, col: p.col });
+                    document.getElementById('progressCount').textContent = placedPieces;
+                    render();
+                    return;
+                }
+            }
+        }
+        
+        function onMouseMove(e) {
+            if (selectedPiece && dragGhost) {
+                dragGhost.style.left = (e.clientX - scaledPieceW/2) + 'px';
+                dragGhost.style.top = (e.clientY - scaledPieceH/2) + 'px';
+            }
+        }
+        
+        function onMouseUp(e) {
+            if (!selectedPiece) return;
+            const rect = workspaceCanvas.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) { selectedPiece = null; if (dragGhost) dragGhost.remove(); return; }
+            const scaleX = workspaceWidth / rect.width, scaleY = workspaceHeight / rect.height;
+            const x = (e.clientX - rect.left) * scaleX, y = (e.clientY - rect.top) * scaleY;
+            const insideWorkspace = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+            
+            if (insideWorkspace && dragGhost) {
+                const col = Math.min(Math.floor(x / scaledPieceW), COLS - 1);
+                const row = Math.min(Math.floor(y / scaledPieceH), ROWS - 1);
+                if (col === selectedPiece.col && row === selectedPiece.row) {
+                    selectedPiece.placed = true;
+                    placedPieces++;
+                    if (selectedPiece.element) selectedPiece.element.style.display = 'none';
+                    if (socket && currentRoomId) socket.emit('piece-placed', { roomId: currentRoomId, row: selectedPiece.row, col: selectedPiece.col });
+                    document.getElementById('progressCount').textContent = placedPieces;
+                    if (placedPieces === TOTAL_PIECES) document.getElementById('victory').classList.add('show');
+                }
+            }
+            if (dragGhost) dragGhost.remove();
+            dragGhost = null;
+            selectedPiece = null;
+            render();
+        }
+        
+        function render() {
+            workspaceCtx.fillStyle = 'rgba(255, 245, 250, 0.98)';
+            workspaceCtx.fillRect(0, 0, workspaceWidth, workspaceHeight);
+            pieces.filter(p => p.placed).forEach(p => {
+                workspaceCtx.drawImage(p.fullCanvas, p.targetX, p.targetY, scaledPieceW, scaledPieceH);
+            });
+        }
+        
+        img.onload = () => {
+            if (currentRoomId && !isCreator) return;
+            document.getElementById('loading').classList.add('hidden');
+        };
+    </script>
+</body>
+</html>
