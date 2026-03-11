@@ -4,4 +4,5 @@
 window.SOCKET_URL = window.SOCKET_URL || 
   (window.location.hostname === 'localhost' 
     ? 'http://localhost:3001' 
-    : 'https://TU-BACKEND.railway.app');
+    : 'https://puzzle-production-382e.up.railway.app');
+
