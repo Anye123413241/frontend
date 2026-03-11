@@ -108,8 +108,9 @@
         
         .pieces-grid { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-start; align-content: flex-start; padding-right: 4px; padding-bottom: 4px; max-height: calc(7 * 40px + 6 * 4px); }
         
-        .piece-thumb { cursor: grab; border-radius: 2px; border: 2px solid transparent; transition: transform 0.15s, border-color 0.15s; }
+        .piece-thumb { cursor: grab; border-radius: 2px; border: 2px solid transparent; transition: transform 0.15s, border-color 0.15s, opacity 0.2s; }
         .piece-thumb:hover { border-color: #e91e63; transform: scale(1.05); }
+        .piece-thumb.dragging { opacity: 0.4; cursor: grabbing; }
         
         .workspace-panel { display: flex; flex-direction: column; min-width: 0; overflow: auto; align-items: center; justify-content: flex-start; }
         #workspaceCanvas { display: block; background: rgba(255, 245, 250, 0.95); border-radius: 8px; cursor: crosshair; border: 1px solid rgba(233, 30, 99, 0.2); }
@@ -337,7 +338,13 @@
             createPieces();
             workspaceCanvas.addEventListener('mousedown', onWorkspaceMouseDown);
             document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('touchmove', onMouseMove, { passive: true });
             document.addEventListener('mouseup', onMouseUp);
+            document.addEventListener('pointerup', onPointerUp);
+            document.addEventListener('touchend', onPointerUp);
+            document.addEventListener('pointercancel', onPointerUp);
+            document.addEventListener('touchcancel', onPointerUp);
+            document.addEventListener('visibilitychange', () => { if (document.hidden) clearSelection(); });
         }
         
         function createPieces() {
@@ -363,6 +370,7 @@
                     const p = { row, col, thumbCanvas, fullCanvas, targetX: col * scaledPieceW, targetY: row * scaledPieceH, placed: false, element: div };
                     pieces.push(p);
                     div.addEventListener('mousedown', (e) => onPieceMouseDown(e, pieces.indexOf(p)));
+                    div.addEventListener('touchstart', (e) => { e.preventDefault(); onPieceMouseDown(e, pieces.indexOf(p)); }, { passive: false });
                     container.appendChild(div);
                 }
             }
@@ -384,11 +392,10 @@
         
         function updatePiecesDOM() {
             const grid = document.getElementById('piecesGrid');
-            pieces.forEach((p, i) => {
+            pieces.forEach((p) => {
                 if (p.placed) p.element.style.display = 'none';
                 else {
                     p.element.style.display = 'block';
-                    p.element.onmousedown = (e) => onPieceMouseDown(e, i);
                     grid.appendChild(p.element);
                 }
             });
@@ -396,7 +403,12 @@
         
         function showImagePopup() { document.getElementById('imgPopup').classList.add('show'); }
         function hideImagePopup() { document.getElementById('imgPopup').classList.remove('show'); }
-        document.addEventListener('keydown', e => { if (e.key === 'Escape') hideImagePopup(); });
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') {
+                if (selectedPiece) clearSelection();
+                else hideImagePopup();
+            }
+        });
         
         function startPuzzle() {
             pieces.forEach(p => p.placed = false);
@@ -404,17 +416,29 @@
             document.getElementById('victory').classList.remove('show');
         }
         
+        function clearSelection() {
+            if (selectedPiece && selectedPiece.element) selectedPiece.element.classList.remove('dragging');
+            if (dragGhost && dragGhost.parentNode) dragGhost.remove();
+            dragGhost = null;
+            selectedPiece = null;
+            render();
+        }
+        
         function onPieceMouseDown(e, index) {
             e.preventDefault();
+            clearSelection();
             const p = pieces[index];
             if (p.placed) return;
             selectedPiece = p;
+            p.element.classList.add('dragging');
+            const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+            const clientY = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
             dragGhost = document.createElement('canvas');
             dragGhost.width = scaledPieceW;
             dragGhost.height = scaledPieceH;
             dragGhost.getContext('2d').drawImage(p.fullCanvas, 0, 0);
             dragGhost.className = 'drag-ghost';
-            dragGhost.style.cssText = `position:fixed;width:${scaledPieceW}px;height:${scaledPieceH}px;left:${e.clientX - scaledPieceW/2}px;top:${e.clientY - scaledPieceH/2}px;pointer-events:none;z-index:9999;`;
+            dragGhost.style.cssText = `position:fixed;width:${scaledPieceW}px;height:${scaledPieceH}px;left:${clientX - scaledPieceW/2}px;top:${clientY - scaledPieceH/2}px;pointer-events:none;z-index:9999;`;
             document.body.appendChild(dragGhost);
         }
         
@@ -439,19 +463,38 @@
         }
         
         function onMouseMove(e) {
-            if (selectedPiece && dragGhost) {
-                dragGhost.style.left = (e.clientX - scaledPieceW/2) + 'px';
-                dragGhost.style.top = (e.clientY - scaledPieceH/2) + 'px';
+            const c = getClientCoords(e);
+            if (selectedPiece && dragGhost && (c.x !== undefined || e.clientX !== undefined)) {
+                const x = c.x ?? e.clientX, y = c.y ?? e.clientY;
+                dragGhost.style.left = (x - scaledPieceW/2) + 'px';
+                dragGhost.style.top = (y - scaledPieceH/2) + 'px';
             }
+        }
+        
+        function getClientCoords(e) {
+            if (e.touches && e.touches.length) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            if (e.changedTouches && e.changedTouches.length) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+            return { x: e.clientX, y: e.clientY };
+        }
+        
+        function onPointerUp(e) {
+            if (!selectedPiece) return;
+            const coords = getClientCoords(e);
+            handleDrop(coords.x, coords.y);
         }
         
         function onMouseUp(e) {
             if (!selectedPiece) return;
+            handleDrop(e.clientX, e.clientY);
+        }
+        
+        function handleDrop(clientX, clientY) {
+            if (!selectedPiece) return;
             const rect = workspaceCanvas.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) { selectedPiece = null; if (dragGhost) dragGhost.remove(); return; }
+            if (rect.width === 0 || rect.height === 0) { clearSelection(); return; }
             const scaleX = workspaceWidth / rect.width, scaleY = workspaceHeight / rect.height;
-            const x = (e.clientX - rect.left) * scaleX, y = (e.clientY - rect.top) * scaleY;
-            const insideWorkspace = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+            const x = (clientX - rect.left) * scaleX, y = (clientY - rect.top) * scaleY;
+            const insideWorkspace = clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
             
             if (insideWorkspace && dragGhost) {
                 const col = Math.min(Math.floor(x / scaledPieceW), COLS - 1);
@@ -465,10 +508,7 @@
                     if (placedPieces === TOTAL_PIECES) document.getElementById('victory').classList.add('show');
                 }
             }
-            if (dragGhost) dragGhost.remove();
-            dragGhost = null;
-            selectedPiece = null;
-            render();
+            clearSelection();
         }
         
         function render() {
